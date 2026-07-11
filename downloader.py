@@ -94,7 +94,7 @@ def _cookies_to_netscape() -> Path | None:
 # Fast path : yt-dlp direct (pas de browser)
 # ------------------------------------------------------------------
 
-def _try_ytdlp_direct(url: str, output_tmpl: str, concurrent_fragments: int = 8) -> bool:
+def _try_ytdlp_direct(url: str, output_tmpl: str, concurrent_fragments: int = 16) -> bool:
     """
     Tente de télécharger directement via yt-dlp sans Playwright.
     Retourne True si réussi.
@@ -344,7 +344,7 @@ def _intercept_via_playwright(shorties_url: str) -> dict:
 # Point d'entrée principal
 # ------------------------------------------------------------------
 
-def download(url: str, output_dir: Path = DOWNLOADS_DIR, filename: str | None = None, concurrent_fragments: int = 8) -> Path | None:
+def download(url: str, output_dir: Path = DOWNLOADS_DIR, filename: str | None = None, concurrent_fragments: int = 16) -> Path | None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     vkey = _extract_vkey(url)
@@ -434,7 +434,7 @@ def main():
         url=args[0],
         output_dir=Path(opts.get("--output", DOWNLOADS_DIR)),
         filename=opts.get("--filename"),
-        concurrent_fragments=int(opts.get("--fragments", 8)),
+        concurrent_fragments=int(opts.get("--fragments", 16)),
     )
     return 0 if result else 1
 

@@ -238,7 +238,7 @@ def _run_download_job(url: str, job_id: str):
         # ── yt-dlp direct ──────────────────────────────────────
         log(f"Téléchargement: {url}")
         cmd = [YTDLP_BIN, url, "--output", output_tmpl,
-               "--concurrent-fragments", "8", "--no-playlist", "--newline"]
+               "--concurrent-fragments", "16", "--no-playlist", "--newline"]
         if cookies_file:
             cmd += ["--cookies", str(cookies_file)]
 
@@ -271,7 +271,7 @@ def _run_download_job(url: str, job_id: str):
 
             cmd2 = [YTDLP_BIN, video_url, "--output", output_tmpl,
                     "--referer", url, "--add-header", "Origin:https://www.pornhub.com",
-                    "--concurrent-fragments", "8", "--no-playlist", "--newline"]
+                    "--concurrent-fragments", "16", "--no-playlist", "--newline"]
             if cookies_file:
                 cmd2 += ["--cookies", str(cookies_file)]
             success, _ = _stream_cmd(cmd2, log, progress)
