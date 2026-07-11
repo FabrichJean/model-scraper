@@ -24,11 +24,16 @@ function icon(name) {
 // Si ce site (web/) est servi depuis une autre origine que server.py (autre port,
 // autre domaine — d'où le CORS côté serveur), définir AVANT app.js soit :
 //   window.PH_API_BASE = "http://localhost:8080"                      (un seul candidat)
-//   window.PH_API_BASES = ["http://localhost:8080", "http://192.168.1.50:8080"]  (plusieurs, essayés dans l'ordre)
+//   window.PH_API_BASE = ["http://localhost:8080", "http://192.168.1.50:8080"]  (plusieurs, essayés dans l'ordre)
+//   window.PH_API_BASES = [...]  (alias pluriel, accepté aussi)
 // Par défaut (même origine, cas standard) : chaîne vide = URLs relatives.
+// PH_API_BASE accepte indifféremment une chaîne unique ou un tableau, pour éviter
+// tout piège singulier/pluriel.
 const API_BASE_CANDIDATES = (
-  window.PH_API_BASES && window.PH_API_BASES.length ? window.PH_API_BASES :
-  window.PH_API_BASE ? [window.PH_API_BASE] : [""]
+  Array.isArray(window.PH_API_BASES) && window.PH_API_BASES.length ? window.PH_API_BASES :
+  Array.isArray(window.PH_API_BASE) && window.PH_API_BASE.length ? window.PH_API_BASE :
+  window.PH_API_BASE ? [window.PH_API_BASE] :
+  [""]
 ).map((b) => b.replace(/\/$/, ""));
 
 let API_BASE = API_BASE_CANDIDATES[0];
@@ -71,27 +76,59 @@ async function fetchJSON(path, opts) {
   return r.json();
 }
 
-// Pendant la résolution de l'API (sondage des candidats ci-dessus), désactiver
-// les formulaires plutôt que de laisser l'utilisateur soumettre avant de savoir
-// quelle base d'API utiliser.
-(function showConnectingState() {
-  const controls = document.querySelectorAll(
-    "#download-form input, #download-form button, #search-form input, #search-form button"
-  );
-  const original = new Map();
-  controls.forEach((el) => {
-    original.set(el, { disabled: el.disabled, html: el.tagName === "BUTTON" ? el.innerHTML : null });
-    el.disabled = true;
-    if (el.tagName === "BUTTON") el.innerHTML = icon("spinner") + "Connexion…";
-  });
-  apiReady.finally(() => {
-    controls.forEach((el) => {
-      const o = original.get(el);
-      el.disabled = o.disabled;
-      if (el.tagName === "BUTTON") el.innerHTML = o.html;
-    });
-  });
-})();
+// Pendant la résolution de l'API (sondage des candidats ci-dessus), le contenu
+// reste rendu et visible en dessous — un overlay glass flouté avec spinner le
+// recouvre (et bloque les clics via z-index) plutôt que de le remplacer.
+const connectingOverlay = document.getElementById("connecting-overlay");
+const connectingMessageEl = document.getElementById("connecting-message");
+
+// Messages qui défilent pendant l'attente, pour que le chargement paraisse
+// motivé plutôt qu'un spinner nu. Purement cosmétique — la résolution réelle
+// (sondage des candidats API_BASE) tourne en parallèle, indépendamment.
+const CONNECTING_MESSAGES = [
+  "Vérification de la disponibilité…",
+  "Choix du point d'accès le plus rapide…",
+  "Établissement de la connexion sécurisée…",
+  "Synchronisation des paramètres…",
+  "Chargement des modules…",
+  "Résolution des routes de l'API…",
+  "Vérification du certificat…",
+  "Préparation de l'interface…",
+  "Vérification des accès…",
+  "Chargement des ressources statiques…",
+  "Optimisation de la connexion…",
+  "Mise en cache des données…",
+  "Configuration de la session…",
+  "Test de latence…",
+  "Alignement des horloges…",
+  "Compression des échanges…",
+  "Vérification de l'intégrité…",
+  "Dernières vérifications…",
+  "Finalisation…",
+  "Presque prêt…",
+];
+let connectingMessageTimer = null;
+
+function startConnectingMessages() {
+  let i = 0;
+  connectingMessageEl.textContent = CONNECTING_MESSAGES[0];
+  connectingMessageTimer = setInterval(() => {
+    i = (i + 1) % CONNECTING_MESSAGES.length;
+    connectingMessageEl.classList.add("fade");
+    setTimeout(() => {
+      connectingMessageEl.textContent = CONNECTING_MESSAGES[i];
+      connectingMessageEl.classList.remove("fade");
+    }, 100);
+  }, 2000);
+}
+
+function stopConnectingMessages() {
+  clearInterval(connectingMessageTimer);
+}
+
+connectingOverlay.classList.add("visible");
+startConnectingMessages();
+apiReady.finally(() => { connectingOverlay.classList.remove("visible"); stopConnectingMessages(); });
 
 // Miniatures Pornhub = URLs signées à courte durée de vie : certaines expirent
 // avant le chargement. Remplace par le placeholder plutôt que laisser une case noire.
