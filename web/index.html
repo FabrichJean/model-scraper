@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://cdn.tailwindcss.com"></script>
+<title>Always Free Pornhub Downloader</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="min-h-screen flex justify-center pt-14 px-4 text-gray-200">
+
+<div class="glass border border-white/10 rounded-xl w-[720px] max-w-full shadow-2xl h-max">
+  <div class="p-6">
+
+    <h1 class="text-3xl font-bold">Pornhub <span class="text-orange-400">Downloader</span></h1>
+    <p class="text-sm text-gray-400 mt-1" id="subtitle">Short ou vidéo complète — colle un lien /shorties/ ou view_video.php?viewkey=</p>
+
+    <div class="flex gap-8 mt-8 border-b border-white/10 pb-3" id="main-nav">
+      <button type="button" class="nav-link active" data-view="download"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>Entrer une URL</button>
+      <button type="button" class="nav-link" data-view="search"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg>Rechercher</button>
+    </div>
+
+    <button type="button" id="scan-back" class="back-link" style="display:none"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>Retour à la recherche</button>
+
+    <!-- ================= DOWNLOAD ================= -->
+    <section id="view-download" class="view active">
+      <form id="download-form" class="flex gap-4 mt-6">
+        <input type="url" id="download-url" placeholder="https://www.pornhub.com/view_video.php?viewkey=xxxxx" required autofocus
+          class="flex-1 rounded-lg bg-[#1a2028] border border-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-orange-400 placeholder:text-gray-500">
+        <button class="orange-btn px-8 rounded-lg text-black font-semibold" type="submit">Télécharger</button>
+      </form>
+
+      <div id="download-job" class="job-panel" style="display:none">
+        <p class="url-label" id="download-job-url"></p>
+        <span class="badge badge-running" id="download-badge"><svg class="icon spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>En cours…</span>
+        <div class="progress-wrap"><div class="progress-bar" id="download-bar"></div></div>
+        <div id="download-log" class="log-box"></div>
+        <div id="download-dl-wrap"></div>
+      </div>
+    </section>
+
+    <!-- ================= SEARCH ================= -->
+    <section id="view-search" class="view">
+      <form id="search-form" class="flex gap-4 mt-6">
+        <input type="text" id="search-q" placeholder="ex: luna, abella…" required autofocus
+          class="flex-1 rounded-lg bg-[#1a2028] border border-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-orange-400 placeholder:text-gray-500">
+        <button class="orange-btn px-8 rounded-lg text-black font-semibold" type="submit">Rechercher</button>
+      </form>
+      <div id="search-results"></div>
+    </section>
+
+    <!-- ================= SCAN D'UN MODÈLE (depuis la recherche) ================= -->
+    <section id="view-scan" class="view mt-6">
+      <p class="url-label" id="scan-url"></p>
+      <span class="badge badge-running" id="scan-badge"><svg class="icon spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>Scan en cours…</span>
+      <div id="scan-log" class="log-box small"></div>
+
+      <div class="stats-row" id="scan-stats" style="display:none">
+        <div class="stat"><span class="stat-val" id="scan-subs">—</span><span class="stat-lbl">Abonnés</span></div>
+        <div class="stat"><span class="stat-val" id="scan-count">—</span><span class="stat-lbl">Vidéos</span></div>
+        <div class="spacer"></div>
+        <button id="scan-dl-all" class="dl-all-btn" style="display:none"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>Tout télécharger</button>
+      </div>
+
+      <div id="scan-grid" class="grid"></div>
+    </section>
+
+  </div>
+</div>
+
+<!-- Si ce fichier est servi depuis une autre origine que server.py (autre port,
+     autre domaine), décommenter et adapter la ligne suivante AVANT app.js :
+<script>window.PH_API_BASE = "http://localhost:8080";</script>
+-->
+<script>window.PH_API_BASE = ["https://epta-api.onrender.com","http://localhost:8080"];</script>
+<script src="app.js"></script>
+</body>
+</html>
