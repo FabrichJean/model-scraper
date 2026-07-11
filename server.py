@@ -309,3 +309,233 @@ def _run_download_job(url: str, job_id: str):
         log(f"Exception: {exc}", "error")
         error(str(exc))
 
+
+# ─────────────────────────────────────────────────────────────
+# Model scan job
+# ─────────────────────────────────────────────────────────────
+
+def _run_model_scan_job(model_url: str, job_id: str):
+    job = model_jobs[job_id]
+    q = job["queue"]
+
+    def log(msg, level="info"):
+        e = {"type": "log", "level": level, "msg": msg, "t": time.strftime("%H:%M:%S")}
+        job["logs"].append(e); q.put(e)
+
+    try:
+        job["status"] = "running"
+        log("Vérification des credentials…")
+        from credentials import ensure_fresh
+        ensure_fresh()
+        log("Credentials OK ✓")
+
+        from playwright.async_api import async_playwright
+        from downloader import _load_playwright_cookies, _BLOCK_EXTENSIONS
+        pw_cookies = _load_playwright_cookies()
+        captured = {}
+
+        async def run():
+            import asyncio as _aio
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                context = await browser.new_context(
+                    viewport={"width": 390, "height": 844},
+                    user_agent=(
+                        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+                        "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+                        "Version/17.0 Mobile/15E148 Safari/604.1"
+                    ),
+                    is_mobile=True,
+                )
+                bypass = [
+                    {"name": "pornhub_av",    "value": "1", "domain": ".pornhub.com", "path": "/"},
+                    {"name": "cookieConsent", "value": "1", "domain": ".pornhub.com", "path": "/"},
+                ]
+                await context.add_cookies(bypass + (pw_cookies or []))
+                page = await context.new_page()
+
+                async def block(route):
+                    ext = Path(route.request.url.split("?")[0]).suffix.lower()
+                    await route.abort() if ext in _BLOCK_EXTENSIONS else await route.continue_()
+                await page.route("**/*", block)
+
+                # Intercept userProfile POST
+                async def on_response(resp):
+                    if "shorties/userProfile" in resp.url and "data" not in captured:
+                        try:
+                            captured["data"] = await resp.json()
+                            log(f"userProfile reçu: {len(captured['data'].get('videoList',[]))} vidéos")
+                        except Exception as e:
+                            log(f"Parse error: {e}", "warn")
+
+                page.on("response", on_response)
+
+                # Step A: /videos pour trouver le lien shorties
+                videos_url = model_url.rstrip("/") + "/videos"
+                log(f"Navigation: {videos_url}")
+                await page.goto(videos_url, timeout=30000, wait_until="domcontentloaded")
+
+                try:
+                    btn = await page.query_selector("button:has-text('Accept All Cookies')")
+                    if btn: await btn.click()
+                except Exception: pass
+
+                await page.wait_for_load_state("networkidle")
+
+                for _ in range(4):
+                    await page.evaluate("window.scrollBy(0, window.innerHeight)")
+                    await _aio.sleep(0.7)
+
+                try:
+                    await page.wait_for_selector("a.modelShorties__redirect__link", timeout=12000)
+                    shorties_href = await page.get_attribute("a.modelShorties__redirect__link", "href")
+                    log(f"Lien trouvé: {shorties_href}")
+                except Exception:
+                    log("modelShorties__redirect__link introuvable", "error")
+                    await browser.close(); return
+
+                captured["shorties_url"] = shorties_href
+
+                # Step B: page shorties#openProfile → userProfile XHR
+                log(f"Navigation: {shorties_href}")
+                await page.goto(shorties_href, timeout=30000, wait_until="networkidle")
+                await _aio.sleep(3)
+                await browser.close()
+
+        exc_box = {}
+        def thread_fn():
+            try: asyncio.run(run())
+            except Exception as e: exc_box["error"] = e
+
+        t = threading.Thread(target=thread_fn, daemon=True)
+        t.start(); t.join(timeout=120)
+
+        if "error" in exc_box:
+            log(f"Erreur: {exc_box['error']}", "error")
+            job["status"] = "error"
+            q.put({"type": "error"}); return
+
+        api = captured.get("data", {})
+        videos = api.get("videoList", [])
+        job.update(
+            status="done",
+            videos=videos,
+            subscribers=api.get("subscribersNumber", ""),
+            video_count=api.get("videoCount", ""),
+            shorties_url=captured.get("shorties_url", ""),
+        )
+        log(f"Terminé ✓  {len(videos)} vidéos trouvées", "success")
+        q.put({"type": "done", "count": len(videos),
+               "videos": videos,
+               "subscribers": api.get("subscribersNumber", ""),
+               "video_count": api.get("videoCount", "")})
+
+    except Exception as exc:
+        log(f"Exception: {exc}", "error")
+        job["status"] = "error"
+        q.put({"type": "error"})
+
+
+# ─────────────────────────────────────────────────────────────
+# Frontend statique (web/)
+# ─────────────────────────────────────────────────────────────
+
+@app.route("/")
+def index():
+    return app.send_static_file("index.html")
+
+
+# ─────────────────────────────────────────────────────────────
+# API — santé (le frontend l'utilise pour choisir quelle base d'API
+# utiliser quand plusieurs sont configurées, cf. web/app.js)
+# ─────────────────────────────────────────────────────────────
+
+@app.route("/api/ping")
+def api_ping():
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────
+# API — download
+# ─────────────────────────────────────────────────────────────
+
+@app.route("/api/start", methods=["POST"])
+def api_start():
+    """Démarre un téléchargement (short ou vidéo complète) et retourne le job_id."""
+    url = request.form.get("url", "").strip()
+    from downloader import is_supported_url
+    if not url or not is_supported_url(url):
+        return {"error": "URL invalide"}, 400
+    job_id = str(uuid.uuid4())[:8]
+    jobs[job_id] = _new_job({"url": url, "file": None})
+    threading.Thread(target=_run_download_job, args=(url, job_id), daemon=True).start()
+    return {"job_id": job_id}
+
+
+@app.route("/stream/<job_id>")
+def stream(job_id):
+    if job_id not in jobs:
+        return Response("", mimetype="text/event-stream")
+    return Response(stream_with_context(_sse_stream(jobs[job_id])),
+                    mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.route("/file/<filename>")
+def serve_file(filename):
+    from flask import send_from_directory
+    return send_from_directory(DOWNLOADS_DIR, filename, as_attachment=True)
+
+
+# ─────────────────────────────────────────────────────────────
+# API — scan des shorts d'un modèle
+# ─────────────────────────────────────────────────────────────
+
+@app.route("/api/model/scan", methods=["POST"])
+def api_model_scan():
+    """Démarre le scan des shorts d'un modèle et retourne le job_id."""
+    url = request.form.get("url", "").strip()
+    if not url or "pornhub.com/" not in url:
+        return {"error": "URL invalide"}, 400
+    job_id = str(uuid.uuid4())[:8]
+    model_jobs[job_id] = _new_job({"url": url, "videos": [], "subscribers": "", "video_count": ""})
+    threading.Thread(target=_run_model_scan_job, args=(url, job_id), daemon=True).start()
+    return {"job_id": job_id}
+
+
+@app.route("/stream/model/<job_id>")
+def stream_model(job_id):
+    if job_id not in model_jobs:
+        return Response("", mimetype="text/event-stream")
+    return Response(stream_with_context(_sse_stream(model_jobs[job_id])),
+                    mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ─────────────────────────────────────────────────────────────
+# API — recherche de modèle par mot-clé
+# ─────────────────────────────────────────────────────────────
+
+@app.route("/api/search")
+def api_search():
+    query = request.args.get("q", "").strip()
+    if not query:
+        return {"models": [], "videos": []}
+    try:
+        from model_search import search_models, search_videos
+        return {"models": search_models(query), "videos": search_videos(query)}
+    except Exception as exc:
+        return {"error": str(exc)}, 500
+
+
+# ─────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    port = 8080
+    for i, arg in enumerate(sys.argv):
+        if arg == "--port" and i + 1 < len(sys.argv):
+            port = int(sys.argv[i + 1])
+    print(f"\n  Pornhub Downloader  →  http://localhost:{port}\n")
+    app.run(host="0.0.0.0", port=port, threaded=True, debug=False)
