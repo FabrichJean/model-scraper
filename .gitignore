@@ -1,0 +1,5 @@
+downloads/
+docs/
+.claude/
+__pycache__/
+credentials/*
