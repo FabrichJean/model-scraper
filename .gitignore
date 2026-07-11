@@ -3,3 +3,5 @@ docs/
 .claude/
 __pycache__/
 credentials/*
+.venv/
+output/
