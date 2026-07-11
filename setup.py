@@ -68,12 +68,24 @@ def install_requirements(python_bin: Path) -> None:
     log("Dépendances Python installées")
 
 
-def install_playwright_browser(python_bin: Path) -> None:
+def install_playwright_browser(python_bin: Path, with_deps: bool) -> None:
     log("Installation du navigateur Playwright (chromium)…")
-    subprocess.run(
-        [str(python_bin), "-m", "playwright", "install", "chromium"],
-        check=True, cwd=PROJECT_DIR,
-    )
+    cmd = [str(python_bin), "-m", "playwright", "install"]
+    if with_deps:
+        cmd.append("--with-deps")  # libs système (libnss3, libatk…) requises pour lancer Chromium en prod
+    cmd.append("chromium")
+
+    result = subprocess.run(cmd, cwd=PROJECT_DIR)
+    if result.returncode != 0 and with_deps:
+        log("⚠ 'playwright install --with-deps' a échoué (droits insuffisants ?) — retry sans --with-deps")
+        subprocess.run(
+            [str(python_bin), "-m", "playwright", "install", "chromium"],
+            check=True, cwd=PROJECT_DIR,
+        )
+        log("⚠ Navigateur installé SANS ses libs système — le fallback Playwright risque de ne pas fonctionner en prod")
+        return
+
+    result.check_returncode()
     log("Navigateur Playwright installé")
 
 
@@ -132,7 +144,7 @@ def main() -> None:
         python_bin = create_venv()
 
     install_requirements(python_bin)
-    install_playwright_browser(python_bin)
+    install_playwright_browser(python_bin, with_deps=in_deploy_env())
     check_ffmpeg()
     create_directories()
     print_next_steps(python_bin, used_venv=not no_venv)
