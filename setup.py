@@ -6,8 +6,14 @@ navigateur Playwright, vérification de ffmpeg, dossiers nécessaires.
 Usage:
     python3 setup.py            # crée .venv/ et installe tout dedans
     python3 setup.py --no-venv  # installe dans l'interpréteur courant
+
+Sur une plateforme de build cloud (Render, Heroku, CI générique...), le
+conteneur de build est déjà isolé — créer un venv en plus ferait tout
+retélécharger/réinstaller en double (dont le navigateur Playwright, ~300 Mo)
+et peut dépasser le quota du build. C'est donc détecté et évité automatiquement.
 """
 
+import os
 import shutil
 import subprocess
 import sys
@@ -16,6 +22,7 @@ from pathlib import Path
 
 PROJECT_DIR = Path(__file__).parent
 VENV_DIR = PROJECT_DIR / ".venv"
+DEPLOY_ENV_VARS = ("RENDER", "CI", "DYNO", "FLY_APP_NAME")
 REQUIRED_DIRS = ["credentials", "downloads", "output"]
 
 
@@ -107,8 +114,14 @@ def print_next_steps(python_bin: Path, used_venv: bool) -> None:
         print(f"  2. Lancer le serveur web : python3 server.py")
 
 
+def in_deploy_env() -> bool:
+    return any(os.environ.get(k) for k in DEPLOY_ENV_VARS)
+
+
 def main() -> None:
-    no_venv = "--no-venv" in sys.argv
+    no_venv = "--no-venv" in sys.argv or in_deploy_env()
+    if no_venv and "--no-venv" not in sys.argv:
+        log("Plateforme de build cloud détectée — venv ignoré (--no-venv implicite)")
 
     check_python_version()
 
