@@ -147,3 +147,8 @@ def refresh() -> bool:
         print(f"[AUTH] {len(cookies_list)} cookies sauvegardés")
 
     return bool(cookies_list)
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(0 if refresh() else 1)
